@@ -1,17 +1,21 @@
 {
-  "name": "botwpp",
-  "version": "1.0.0",
-  "description": "Bot do WhatsApp para controle financeiro",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.13",
-    "axios": "^1.7.9",
-    "express": "^4.21.2",
-    "chartjs-node-canvas": "^4.1.6",
-    "ws": "^8.16.0",
-    "chart.js": "^4.4.0"
-  }
+    "name": "botwpp-unificado",
+    "version": "1.0.0",
+    "description": "Bot do WhatsApp unificado para controle financeiro com funcionalidades de IA e comandos estruturados",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "@google-cloud/speech": "^6.7.1",
+        "@whiskeysockets/baileys": "^6.7.16",
+        "axios": "^1.7.9",
+        "chart.js": "^3.9.1",
+        "chartjs-node-canvas": "^4.1.6",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "simple-git": "^3.27.0",
+        "spellchecker": "^3.7.0",
+        "ws": "^8.16.0"
+    }
 }
