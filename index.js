@@ -8,8 +8,15 @@ const app = express();
 app.use(express.json());
 
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzzkFkvMkJ7bCGmgEuLuwHsmypjqRcebCSU1vrGYcqSu0MGkSVhMo8LXhGAFCwCydzzew/exec';
-const GRUPO_ID = '120363403512588677@g.us'; // ID do grupo onde o bot está vinculado
-const OPENROUTER_API_KEY = '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'; // Substitua pela sua chave de API do OpenRout
+const GRUPOS_PERMITIDOS = [
+  '120363403512588677@g.us', // Grupo original
+  '120363415954951531@g.us' // Novo grupo
+]; // ID do grupo onde o bot está vinculado
+const USUARIOS_AUTORIZADOS = [
+  '5521975874116@s.whatsapp.net', // N1
+  '55219976919619@s.whatsapp.net' // N2
+];
+const OPENROUTER_API_KEY = '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'; // Substitua pela sua chave de API do OpenRout
 const chartJSNodeCanvas = new ChartJSNodeCanvas({
   width: 800,
   height: 600,
@@ -19,6 +26,10 @@ const chartJSNodeCanvas = new ChartJSNodeCanvas({
 const wss = new WebSocket.Server({ port: 8080 });
 
 let ultimoComandoProcessado = null;
+
+// Depois faça o log das configurações
+console.log("Grupos Autorizados:", GRUPOS_PERMITIDOS);
+console.log("Usuários Autorizados:", USUARIOS_AUTORIZADOS);
 
 // Lista de comandos para o comando "ajuda"
 const LISTA_DE_COMANDOS = `
@@ -442,11 +453,43 @@ async function iniciarBot() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
 
-    // Verifica se a mensagem é do grupo correto e enviada por você
-    if (msg.key.remoteJid !== GRUPO_ID || !msg.key.fromMe) {
-      console.log("Mensagem ignorada (não é do grupo correto ou não foi enviada por você).");
+    // Verificação completa da estrutura da mensagem
+    if (
+      !msg?.message || 
+      !msg.key?.remoteJid || 
+      typeof msg.message.conversation !== 'string'
+  ) {
+      console.log("Mensagem ignorada (formato inválido).");
       return;
-    }
+  }
+
+  // Declaração única da variável 'texto'
+  const texto = msg.message.conversation?.trim() || "";
+
+  // Comando !id (funciona em qualquer grupo)
+  if (texto.toLowerCase() === "!id") {
+    const grupoId = msg.key.remoteJid;
+    await sock.sendMessage(grupoId, { 
+      text: `🔑 ID deste grupo: *${grupoId}*` 
+    });
+    return;
+  }
+
+  // --- Verificações de grupo e usuário ---
+  console.log("Grupo Remetente:", msg.key.remoteJid);
+  
+  // Verifica grupo permitido
+  if (!GRUPOS_PERMITIDOS.includes(msg.key.remoteJid)) {
+    console.log("Mensagem ignorada (grupo não autorizado). IDs válidos:", GRUPOS_PERMITIDOS);
+    return;
+  }
+
+  // Verifica usuário autorizado
+  const remetenteId = msg.key.participant || msg.key.remoteJid;
+  if (!USUARIOS_AUTORIZADOS.includes(remetenteId)) {
+    console.log("Usuário não autorizado:", remetenteId);
+    return;
+  }
 
     // Ignora apenas mensagens que começam com "❌" (respostas automáticas do bot)
     if (msg.message.conversation?.startsWith("❌")) {
@@ -470,9 +513,16 @@ async function iniciarBot() {
 
     console.log("Mensagem recebida:", JSON.stringify(msg, null, 2));
 
-  const texto = msg.message.conversation.trim(); // Remove espaços em branco
-  const remetente = msg.pushName || "Usuário";
-
+  // Nome do remetente (apenas para exibição)
+  const remetenteNome = msg.pushName || "Usuário"; // Nome exibido no WhatsApp
+// Comando para obter o ID do grupo
+if (texto.toLowerCase() === "!id") {
+  const grupoId = msg.key.remoteJid;
+  await sock.sendMessage(grupoId, { 
+    text: `📌 ID deste grupo: *${grupoId}*` 
+  });
+  return;
+}
   if (ultimoComandoProcessado === texto) return;
   ultimoComandoProcessado = texto;
 
@@ -480,7 +530,7 @@ async function iniciarBot() {
 
     // --- VERIFICAÇÃO DO COMANDO "AJUDA" ---
   if (texto.toLowerCase() === "ajuda") {
-    await sock.sendMessage(GRUPO_ID, { text: LISTA_DE_COMANDOS });
+    await sock.sendMessage(msg.key.remoteJid, { text: LISTA_DE_COMANDOS });
     return; // Encerra o processamento aqui
   }
 
@@ -501,36 +551,40 @@ async function iniciarBot() {
         case 'resumo': { // <--- Adicione chaves aqui
           console.log("Processando comando 'resumo'...");
           const resumoFinanceiro = await axios.get(`${WEB_APP_URL}?action=resumo`); // Renomeei para resumoFinanceiro
-          await sock.sendMessage(GRUPO_ID, { text: resumoFinanceiro.data });
+          await sock.sendMessage(msg.key.remoteJid, { text: resumoFinanceiro.data });
           break;
         }
 
         case 'poupança':
-          console.log("Processando comando 'poupança'...");
-          const valorPoupanca = parametros.valor;
-          await axios.get(`${WEB_APP_URL}?action=adicionarPoupanca&valor=${valorPoupanca}&remetente=${remetente}`);
-          await sock.sendMessage(GRUPO_ID, { text: `✅ R$ ${valorPoupanca} transferidos para a poupança.` });
-          break;
+  console.log("Processando comando 'poupança'...");
+  const valorPoupanca = parametros.valor;
+  // Alterado: remetente → remetenteNome
+  await axios.get(`${WEB_APP_URL}?action=adicionarPoupanca&valor=${valorPoupanca}&remetente=${remetenteNome}`);
+  await sock.sendMessage(msg.key.remoteJid, { text: `✅ R$ ${valorPoupanca} transferidos para a poupança.` });
+  break;
 
-        case 'entrada':
-          console.log("Processando comando 'entrada'...");
-          const valorEntrada = parametros.valor;
-          await axios.get(`${WEB_APP_URL}?action=entrada&valor=${valorEntrada}&remetente=${remetente}`);
-          await sock.sendMessage(GRUPO_ID, { text: `✅ Entrada de R$ ${valorEntrada} registrada por ${remetente}.` });
-          break;
+          case 'entrada':
+            console.log("Processando comando 'entrada'...");
+            const valorEntrada = parametros.valor;
+            // Alterado: remetente → remetenteNome
+            await axios.get(`${WEB_APP_URL}?action=entrada&valor=${valorEntrada}&remetente=${remetenteNome}`);
+            await sock.sendMessage(msg.key.remoteJid, { text: `✅ Entrada de R$ ${valorEntrada} registrada por ${remetenteNome}.` });
+            break;
 
-        case 'saída':
-          console.log("Processando comando 'saída'...");
-          const valorSaida = parametros.valor;
-          const categoriaSaida = parametros.categoria;
-          const responseSaida = await axios.get(`${WEB_APP_URL}?action=saída&valor=${valorSaida}&categoria=${categoriaSaida}&remetente=${remetente}`);
-          await sock.sendMessage(GRUPO_ID, { text: responseSaida.data });
-          break;
+          case 'saída':
+            console.log("Processando comando 'saída'...");
+            const valorSaida = parametros.valor;
+            const categoriaSaida = parametros.categoria;
+            const responseSaida = await axios.get(
+              `${WEB_APP_URL}?action=saída&valor=${valorSaida}&categoria=${categoriaSaida}&remetente=${remetenteNome}` // ✅ Corrigido
+            );
+            await sock.sendMessage(msg.key.remoteJid, { text: responseSaida.data });
+            break;
 
         case 'média':
           console.log("Processando comando 'média'...");
           const media = await axios.get(`${WEB_APP_URL}?action=mediaEntradas`);
-          await sock.sendMessage(GRUPO_ID, { text: media.data });
+          await sock.sendMessage(msg.key.remoteJid, { text: media.data });
           break;
 
         case 'grafico':
@@ -546,17 +600,17 @@ async function iniciarBot() {
           // Verifica se os dados estão no formato correto
           if (!dados.labels || !dados.datasets || !dados.titulo) {
             console.error("Dados do gráfico inválidos:", dados);
-            await sock.sendMessage(GRUPO_ID, { text: "❌ Erro: Dados do gráfico inválidos." });
+            await sock.sendMessage(msg.key.remoteJid, { text: "❌ Erro: Dados do gráfico inválidos." });
             return;
           }
 
           // Gera o gráfico
           try {
             const image = await gerarGrafico(tipoGrafico, dados);
-            await sock.sendMessage(GRUPO_ID, { image: image, caption: `📊 ${dados.titulo}` });
+            await sock.sendMessage(msg.key.remoteJid, { image: image, caption: `📊 ${dados.titulo}` });
           } catch (error) {
             console.error("Erro ao gerar o gráfico:", error);
-            await sock.sendMessage(GRUPO_ID, { text: `❌ Erro ao gerar o gráfico: ${error.message}` });
+            await sock.sendMessage(msg.key.remoteJid, { text: `❌ Erro ao gerar o gráfico: ${error.message}` });
           }
           break;
 
@@ -564,7 +618,7 @@ async function iniciarBot() {
           console.log("Processando comando 'categoria adicionar'...");
           const nomeCategoria = parametros.nome;
           await axios.get(`${WEB_APP_URL}?action=adicionarCategoria&categoria=${nomeCategoria}`);
-          await sock.sendMessage(GRUPO_ID, { text: `📌 Categoria "${nomeCategoria}" adicionada com sucesso.` });
+          await sock.sendMessage(msg.key.remoteJid, { text: `📌 Categoria "${nomeCategoria}" adicionada com sucesso.` });
           break;
 
         case 'listar categorias':
@@ -572,10 +626,10 @@ async function iniciarBot() {
           const responseCategorias = await axios.get(`${WEB_APP_URL}?action=listarCategorias`);
           const categorias = responseCategorias.data.categorias;
           if (categorias.length === 0) {
-            await sock.sendMessage(GRUPO_ID, { text: "📌 Nenhuma categoria cadastrada." });
+            await sock.sendMessage(msg.key.remoteJid, { text: "📌 Nenhuma categoria cadastrada." });
           } else {
             const listaCategorias = categorias.map((cat, index) => `${index + 1}. ${cat}`).join('\n');
-            await sock.sendMessage(GRUPO_ID, { text: `📌 Categorias cadastradas:\n${listaCategorias}` });
+            await sock.sendMessage(msg.key.remoteJid, { text: `📌 Categorias cadastradas:\n${listaCategorias}` });
           }
           break;
 
@@ -585,7 +639,7 @@ async function iniciarBot() {
           const credor = parametros.credor;
           const dataVencimento = parametros.dataVencimento;
           await axios.get(`${WEB_APP_URL}?action=adicionarDivida&valor=${valorDivida}&credor=${credor}&dataVencimento=${dataVencimento}`);
-          await sock.sendMessage(GRUPO_ID, { text: `✅ Dívida de R$ ${valorDivida} adicionada com ${credor}, vencendo em ${dataVencimento}.` });
+          await sock.sendMessage(msg.key.remoteJid, { text: `✅ Dívida de R$ ${valorDivida} adicionada com ${credor}, vencendo em ${dataVencimento}.` });
           break;
 
         case 'dívida listar':
@@ -593,10 +647,10 @@ async function iniciarBot() {
           const responseDividas = await axios.get(`${WEB_APP_URL}?action=listarDividas`);
           const dividas = responseDividas.data.dividas;
           if (dividas.length === 0) {
-            await sock.sendMessage(GRUPO_ID, { text: "📌 Nenhuma dívida cadastrada." });
+            await sock.sendMessage(msg.key.remoteJid, { text: "📌 Nenhuma dívida cadastrada." });
           } else {
             const listaDividas = dividas.map(d => `${d.id}. ${d.credor}: R$ ${d.valor} (Vencimento: ${d.vencimento})`).join('\n');
-            await sock.sendMessage(GRUPO_ID, { text: `📌 Dívidas:\n${listaDividas}` });
+            await sock.sendMessage(msg.key.remoteJid, { text: `📌 Dívidas:\n${listaDividas}` });
           }
           break;
 
@@ -605,7 +659,7 @@ async function iniciarBot() {
           const descricaoLembrete = parametros.descricao;
           const dataLembrete = parametros.data;
           await axios.get(`${WEB_APP_URL}?action=adicionarLembrete&descricao=${descricaoLembrete}&data=${dataLembrete}`);
-          await sock.sendMessage(GRUPO_ID, { text: `✅ Lembrete "${descricaoLembrete}" adicionado para ${dataLembrete}.` });
+          await sock.sendMessage(msg.key.remoteJid, { text: `✅ Lembrete "${descricaoLembrete}" adicionado para ${dataLembrete}.` });
           break;
 
         case 'lembrete listar':
@@ -613,10 +667,10 @@ async function iniciarBot() {
           const responseLembretes = await axios.get(`${WEB_APP_URL}?action=listarLembretes`);
           const lembretes = responseLembretes.data.lembretes;
           if (lembretes.length === 0) {
-            await sock.sendMessage(GRUPO_ID, { text: "📌 Nenhum lembrete cadastrado." });
+            await sock.sendMessage(msg.key.remoteJid, { text: "📌 Nenhum lembrete cadastrado." });
           } else {
             const listaLembretes = lembretes.map(l => `${l.id}. ${l.descricao} (${l.data})`).join('\n');
-            await sock.sendMessage(GRUPO_ID, { text: `📌 Lembretes:\n${listaLembretes}` });
+            await sock.sendMessage(msg.key.remoteJid, { text: `📌 Lembretes:\n${listaLembretes}` });
           }
           break;
 
@@ -625,20 +679,20 @@ async function iniciarBot() {
           const categoria = parametros.categoria;
           const valor = parametros.valor;
           await axios.get(`${WEB_APP_URL}?action=definirOrcamento&categoria=${categoria}&valor=${valor}`);
-          await sock.sendMessage(GRUPO_ID, { text: `✅ Orçamento de R$ ${valor} definido para a categoria "${categoria}".` });
+          await sock.sendMessage(msg.key.remoteJid, { text: `✅ Orçamento de R$ ${valor} definido para a categoria "${categoria}".` });
           break;
 
         case 'orçamento listar':
           console.log("Processando comando 'orçamento listar'...");
           const responseOrcamentos = await axios.get(`${WEB_APP_URL}?action=listarOrcamentos`);
-          await sock.sendMessage(GRUPO_ID, { text: responseOrcamentos.data });
+          await sock.sendMessage(msg.key.remoteJid, { text: responseOrcamentos.data });
           break;
 
           case 'orçamento excluir': {
             console.log("Processando comando 'orçamento excluir'...");
             const numeroOrcamentoExcluir = parametros['número']; // Acessa o parâmetro corretamente
             const responseExcluirOrcamento = await axios.get(`${WEB_APP_URL}?action=excluirOrcamento&numero=${numeroOrcamentoExcluir}`);
-            await sock.sendMessage(GRUPO_ID, { text: responseExcluirOrcamento.data });
+            await sock.sendMessage(msg.key.remoteJid, { text: responseExcluirOrcamento.data });
             break;
           }
 
@@ -652,7 +706,7 @@ async function iniciarBot() {
         
             // Verifica se o número é válido
             if (numeroOrcamentoConsulta < 1 || numeroOrcamentoConsulta > orcamentos.length) {
-              await sock.sendMessage(GRUPO_ID, { text: "❌ Número de orçamento inválido." });
+              await sock.sendMessage(msg.key.remoteJid, { text: "❌ Número de orçamento inválido." });
               break;
             }
         
@@ -660,7 +714,7 @@ async function iniciarBot() {
         
             // Valida o formato da linha
             if (!orcamentoSelecionado.includes(':')) {
-              await sock.sendMessage(GRUPO_ID, { text: "❌ Formato de orçamento inválido." });
+              await sock.sendMessage(msg.key.remoteJid, { text: "❌ Formato de orçamento inválido." });
               break;
             }
         
@@ -669,7 +723,7 @@ async function iniciarBot() {
             const partesIndice = indiceCategoria.split('. ');
             
             if (partesIndice.length < 2) {
-              await sock.sendMessage(GRUPO_ID, { text: "❌ Formato de categoria inválido." });
+              await sock.sendMessage(msg.key.remoteJid, { text: "❌ Formato de categoria inválido." });
               break;
             }
         
@@ -685,7 +739,7 @@ async function iniciarBot() {
 💰 Total Gasto: R$ ${dadosResumo.totalGasto}
 📉 Porcentagem Utilizada: ${dadosResumo.porcentagemUtilizada}%
 📈 Valor Restante: R$ ${dadosResumo.valorRestante}`;
-            await sock.sendMessage(GRUPO_ID, { text: mensagemResumo });
+            await sock.sendMessage(msg.key.remoteJid, { text: mensagemResumo });
             break;
           }
 
@@ -693,28 +747,28 @@ async function iniciarBot() {
           console.log("Processando comando 'excluir'...");
           const numeros = Object.values(parametros).join(",");
           const responseExcluir = await axios.get(`${WEB_APP_URL}?action=excluirTransacao&parametro=${encodeURIComponent(numeros)}`);
-          await sock.sendMessage(GRUPO_ID, { text: responseExcluir.data });
+          await sock.sendMessage(msg.key.remoteJid, { text: responseExcluir.data });
           break;
 
           default:
             console.log("Comando não reconhecido.");
-            await sock.sendMessage(GRUPO_ID, { text: "❌ Comando não reconhecido. Use 'ajuda' para ver a lista de comandos." });
+            await sock.sendMessage(msg.key.remoteJid, { text: "❌ Comando não reconhecido. Use 'ajuda' para ver a lista de comandos." });
         }
       } else {
         // Se o OpenRouter retornou JSON vazio ou inválido, entra na conversação
         console.log("Gerando resposta de conversação...");
         const respostaConversacao = await gerarRespostaConversacao(texto);
-        await sock.sendMessage(GRUPO_ID, { text: respostaConversacao });
+        await sock.sendMessage(msg.key.remoteJid, { text: respostaConversacao });
       }
     } else {
       // Se a mensagem não parece ser um comando, entra na conversação
       console.log("Gerando resposta de conversação...");
       const respostaConversacao = await gerarRespostaConversacao(texto);
-      await sock.sendMessage(GRUPO_ID, { text: respostaConversacao });
+      await sock.sendMessage(msg.key.remoteJid, { text: respostaConversacao });
     }
   } catch (error) {
     console.error("Erro ao processar a mensagem:", error);
-    await sock.sendMessage(GRUPO_ID, { text: `❌ Erro: ${error.message}` });
+    await sock.sendMessage(msg.key.remoteJid, { text: `❌ Erro: ${error.message}` });
   }
 });
 }
