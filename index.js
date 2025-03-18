@@ -9,8 +9,7 @@ app.use(express.json());
 
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzzkFkvMkJ7bCGmgEuLuwHsmypjqRcebCSU1vrGYcqSu0MGkSVhMo8LXhGAFCwCydzzew/exec';
 const GRUPO_ID = '120363403512588677@g.us'; // ID do grupo onde o bot está vinculado
-const OPENROUTER_API_KEY = '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'; // Substitua pela sua chave de API do OpenRouter
-
+const OPENROUTER_API_KEY = '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'; // Substitua pela sua chave de API do OpenRout
 const chartJSNodeCanvas = new ChartJSNodeCanvas({
   width: 800,
   height: 600,
@@ -103,12 +102,26 @@ async function interpretarMensagemComOpenRouter(texto) {
             - excluir dia [data]: Exclui transações de um dia específico.
             - excluir periodo [dataInicio] [dataFim]: Exclui transações de um período específico.
 
-            **Instruções Especiais:**
+            1º **Instruções Especiais:**
             - Se a mensagem se referir a compras de alimentos (como verduras, legumes, frutas, carnes, etc.), a categoria deve ser sempre "Alimentação".
             - Exemplos de mensagens que devem ser categorizadas como "Alimentação":
               - "Comprei uma caixa de aipim por 60 reais"
               - "Gastei 30 reais em verduras no mercado"
               - "Paguei 50 reais em frutas e legumes"
+            
+              2º **Instruções Especiais:**
+              - Se a mensagem for uma pergunta geral, conversa ou não relacionada a finanças, retorne um JSON vazio: {}.
+              - Exemplos de mensagens que devem retornar JSON vazio:
+              - "Qual é a previsão do tempo?"
+              - "Como você está?"
+              - "100 + 10% é quanto?"
+
+              3º **Instruções Especiais:**
+            - Se a mensagem se referir a compras de saúde (como maquiagem, desodorante, remédio, exame, etc.), a categoria deve ser sempre "Alimentação".
+            - Exemplos de mensagens que devem ser categorizadas como "Saúde":
+              - "Comprei uma dipirona por 3 reais"
+              - "Gastei 30 reais em maquiagens na farmácia"
+              - "Paguei 50 reais em shampoo e condicionador"
 
             Sua tarefa é interpretar a seguinte mensagem e retornar o comando correspondente em formato JSON:
             {
@@ -168,13 +181,48 @@ async function interpretarMensagemComOpenRouter(texto) {
   }
 }
 
+// Função para gerar uma resposta de conversação usando o OpenRouter
+async function gerarRespostaConversacao(texto) {
+  console.log("Gerando resposta de conversação com OpenRouter...");
+  try {
+    const resposta = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'qwen/qwq-32b:free',
+        messages: [
+          {
+            role: 'user',
+            content: `Você é um assistente virtual que ajuda com finanças e também pode conversar sobre outros assuntos. Responda de forma amigável e útil.
+            Mensagem: "${texto}"`
+          }
+        ],
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+        }
+      }
+    );
+
+    console.log("Resposta da API OpenRouter recebida:", JSON.stringify(resposta.data, null, 2));
+
+    // Acessa o conteúdo da mensagem
+    const mensagem = resposta.data.choices[0].message.content;
+    return mensagem;
+  } catch (erro) {
+    console.error("Erro ao gerar resposta de conversação:", erro);
+    return "❌ Desculpe, não consegui processar sua mensagem. Tente novamente mais tarde.";
+  }
+}
+
 function interpretarMensagemManual(texto) {
   console.log("Usando fallback manual para interpretar a mensagem...");
   const palavras = texto.toLowerCase().split(' ');
   const valorMatch = texto.match(/\d+/);
   const valor = valorMatch ? parseFloat(valorMatch[0]) : null;
-
-  // Mapeamento de palavras-chave para categorias
+ 
+    // Mapeamento de palavras-chave para categorias
   const categorias = {
     // Alimentação
     arroz: 'Alimentação',
@@ -359,6 +407,20 @@ async function gerarGrafico(tipo, dados) {
   return chartJSNodeCanvas.renderToBuffer(configuration);
 }
 
+// Função para verificar se a mensagem parece ser um comando financeiro
+function pareceSerComandoFinanceiro(texto) {
+  const palavrasChaveFinanceiras = [
+    "resumo", "poupança", "entrada", "saída", "média", "gráfico", "categoria", 
+    "orçamento", "dívida", "lembrete", "histórico", "excluir", "comprei", "gastei", 
+    "paguei", "transferir", "saldo", "meta", "valor", "reais", "R$"
+  ];
+
+  // Verifica se a mensagem contém alguma palavra-chave financeira
+  return palavrasChaveFinanceiras.some(palavra => 
+    texto.toLowerCase().includes(palavra.toLowerCase())
+  );
+}
+
 // Função principal do bot
 async function iniciarBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -407,36 +469,32 @@ async function iniciarBot() {
 
     console.log("Mensagem recebida:", JSON.stringify(msg, null, 2));
 
-    const texto = msg.message.conversation.toLowerCase().trim();
-    const remetente = msg.pushName || "Usuário";
+  const texto = msg.message.conversation.trim(); // Remove espaços em branco
+  const remetente = msg.pushName || "Usuário";
 
-    if (ultimoComandoProcessado === texto) return;
-    ultimoComandoProcessado = texto;
+  if (ultimoComandoProcessado === texto) return;
+  ultimoComandoProcessado = texto;
 
-    console.log("Texto da mensagem:", texto);
+  console.log("Texto da mensagem:", texto);
 
-    // Verifica se a mensagem é "ajuda"
-    if (texto === "ajuda") {
-      await sock.sendMessage(GRUPO_ID, { text: LISTA_DE_COMANDOS });
-      return; // Encerra o processamento da mensagem
-    }
+    // --- VERIFICAÇÃO DO COMANDO "AJUDA" ---
+  if (texto.toLowerCase() === "ajuda") {
+    await sock.sendMessage(GRUPO_ID, { text: LISTA_DE_COMANDOS });
+    return; // Encerra o processamento aqui
+  }
 
     try {
-      // Interpreta a mensagem usando o OpenRouter
-      console.log("Iniciando interpretação da mensagem...");
-      const interpretacao = await interpretarMensagemComOpenRouter(texto);
+      if (pareceSerComandoFinanceiro(texto)) {
+        console.log("Tentando interpretar a mensagem como um comando financeiro...");
+        const interpretacao = await interpretarMensagemComOpenRouter(texto);
+  
+        // Se o OpenRouter retornou um comando válido
+        if (interpretacao?.comando) {
+          const { comando, parametros } = interpretacao;
+          console.log("Comando interpretado:", comando);
+          console.log("Parâmetros interpretados:", parametros);
 
-      if (!interpretacao) {
-        console.log("Não foi possível interpretar a mensagem.");
-        await sock.sendMessage(GRUPO_ID, { text: "❌ Não entendi a mensagem. Use 'ajuda' para ver a lista de comandos." });
-        return;
-      }
-
-      const { comando, parametros } = interpretacao;
-      console.log("Comando interpretado:", comando);
-      console.log("Parâmetros interpretados:", parametros);
-
-      // Processa o comando
+      // Processa o comando financeiro
       switch (comando) {
         // CASO 'resumo'
         case 'resumo': { // <--- Adicione chaves aqui
@@ -637,15 +695,27 @@ async function iniciarBot() {
           await sock.sendMessage(GRUPO_ID, { text: responseExcluir.data });
           break;
 
-        default:
-          console.log("Comando não reconhecido.");
-          await sock.sendMessage(GRUPO_ID, { text: "❌ Comando não reconhecido. Use 'ajuda' para ver a lista de comandos." });
+          default:
+            console.log("Comando não reconhecido.");
+            await sock.sendMessage(GRUPO_ID, { text: "❌ Comando não reconhecido. Use 'ajuda' para ver a lista de comandos." });
+        }
+      } else {
+        // Se o OpenRouter retornou JSON vazio ou inválido, entra na conversação
+        console.log("Gerando resposta de conversação...");
+        const respostaConversacao = await gerarRespostaConversacao(texto);
+        await sock.sendMessage(GRUPO_ID, { text: respostaConversacao });
       }
-    } catch (error) {
-      console.error("Erro ao processar a transação:", error);
-      await sock.sendMessage(GRUPO_ID, { text: `❌ Erro: ${error.message}` });
+    } else {
+      // Se a mensagem não parece ser um comando, entra na conversação
+      console.log("Gerando resposta de conversação...");
+      const respostaConversacao = await gerarRespostaConversacao(texto);
+      await sock.sendMessage(GRUPO_ID, { text: respostaConversacao });
     }
-  });
+  } catch (error) {
+    console.error("Erro ao processar a mensagem:", error);
+    await sock.sendMessage(GRUPO_ID, { text: `❌ Erro: ${error.message}` });
+  }
+});
 }
 
 app.listen(3000, () => console.log("Servidor rodando!"));
