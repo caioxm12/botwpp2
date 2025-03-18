@@ -108,20 +108,21 @@ async function interpretarMensagemComOpenRouter(texto) {
               - "Comprei uma caixa de aipim por 60 reais"
               - "Gastei 30 reais em verduras no mercado"
               - "Paguei 50 reais em frutas e legumes"
-            
-              2º **Instruções Especiais:**
-              - Se a mensagem for uma pergunta geral, conversa ou não relacionada a finanças, retorne um JSON vazio: {}.
-              - Exemplos de mensagens que devem retornar JSON vazio:
-              - "Qual é a previsão do tempo?"
-              - "Como você está?"
-              - "100 + 10% é quanto?"
 
-              3º **Instruções Especiais:**
+              2º **Instruções Especiais:**
             - Se a mensagem se referir a compras de saúde (como maquiagem, desodorante, remédio, exame, etc.), a categoria deve ser sempre "Alimentação".
             - Exemplos de mensagens que devem ser categorizadas como "Saúde":
               - "Comprei uma dipirona por 3 reais"
               - "Gastei 30 reais em maquiagens na farmácia"
               - "Paguei 50 reais em shampoo e condicionador"
+
+              3º **Instruções Especiais:**
+              - Se a mensagem for uma pergunta geral, conversa ou não relacionada a finanças, retorne um JSON vazio: {}.
+              - Exemplos de mensagens que devem retornar JSON vazio:
+              - "Qual é a previsão do tempo?"
+              - "Como você está?"
+              - "100 + 10% é quanto?"
+              - "Quero fazer uma viagem com 800 reais em São Paulo. Poderia me ajudar a montar uma viagem de 3 dias?"
 
             Sua tarefa é interpretar a seguinte mensagem e retornar o comando correspondente em formato JSON:
             {
