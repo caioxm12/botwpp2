@@ -9,7 +9,7 @@ app.use(express.json());
 
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzzkFkvMkJ7bCGmgEuLuwHsmypjqRcebCSU1vrGYcqSu0MGkSVhMo8LXhGAFCwCydzzew/exec';
 const GRUPO_ID = '120363403512588677@g.us'; // ID do grupo onde o bot está vinculado
-const OPENROUTER_API_KEY = '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'; // Substitua pela sua chave de API do OpenRouter
+const OPENROUTER_API_KEY = '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'; // Substitua pela sua chave de API do OpenRouter
 
 const chartJSNodeCanvas = new ChartJSNodeCanvas({
   width: 800,
